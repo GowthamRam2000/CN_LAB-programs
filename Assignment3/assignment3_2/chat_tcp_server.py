@@ -1,77 +1,56 @@
-# Python program to implement server side of chat room. 
-import socket 
-import select 
-import sys 
-from thread import *
+import socket
+import threading
+# Connection Data
+host = '127.0.0.1'
+port = 55555
 
-server = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
-server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) 
+# Starting Server
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.bind((host, port))
+server.listen()
 
-if len(sys.argv) != 3: 
-	print "Correct usage: script, IP address, port number"
-	exit() 
+# Lists For Clients and Their Nicknames
+clients = []
+nicknames = []
+# Sending Messages To All Connected Clients
+def broadcast(message):
+    for client in clients:
+        client.send(message)
+# Handling Messages From Clients
+def handle(client):
+    while True:
+        try:
+            # Broadcasting Messages
+            message = client.recv(1024)
+            broadcast(message)
+        except:
+            # Removing And Closing Clients
+            index = clients.index(client)
+            clients.remove(client)
+            client.close()
+            nickname = nicknames[index]
+            broadcast('{} left!'.format(nickname).encode('ascii'))
+            nicknames.remove(nickname)
+            break
+# Receiving / Listening Function
+def receive():
+    while True:
+        # Accept Connection
+        client, address = server.accept()
+        print("Connected with {}".format(str(address)))
 
-IP_address = str(sys.argv[1]) 
+        # Request And Store Nickname
+        client.send('NICK'.encode('ascii'))
+        nickname = client.recv(1024).decode('ascii')
+        nicknames.append(nickname)
+        clients.append(client)
 
-Port = int(sys.argv[2]) 
+        # Print And Broadcast Nickname
+        print("Nickname is {}".format(nickname))
+        broadcast("{} joined!".format(nickname).encode('ascii'))
+        client.send('Connected to server!'.encode('ascii'))
 
-
-server.bind((IP_address, Port)) 
-
-
-server.listen(100) 
-
-list_of_clients = [] 
-
-def clientthread(conn, addr): 
-
-	conn.send("Welcome to this chatroom!") 
-
-	while True: 
-			try: 
-				message = conn.recv(2048) 
-				if message: 
-
-					
-					print "<" + addr[0] + "> " + message 
-
-					# Calls broadcast function to send message to all 
-					message_to_send = "<" + addr[0] + "> " + message 
-					broadcast(message_to_send, conn) 
-
-				else: 
-					
-					remove(conn) 
-
-			except: 
-				continue
-
-def broadcast(message, connection): 
-	for clients in list_of_clients: 
-		if clients!=connection: 
-			try: 
-				clients.send(message) 
-			except: 
-				clients.close() 
-
-				# if the link is broken, we remove the client 
-				remove(clients) 
-
-def remove(connection): 
-	if connection in list_of_clients: 
-		list_of_clients.remove(connection) 
-
-while True: 
-
-	
-	conn, addr = server.accept() 
-
-	list_of_clients.append(conn) 
-
-	print addr[0] + " connected"
- 
-	start_new_thread(clientthread,(conn,addr))	 
-
-conn.close() 
-server.close() 
-
+        # Start Handling Thread For Client
+        thread = threading.Thread(target=handle, args=(client,))
+        thread.start()
+receive()
